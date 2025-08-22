@@ -7,4 +7,5 @@
     "libjpeg-turbo",
     "tiff"
   ],
+  "builtin-baseline": "3daf912963efd180f07343166b1a779b51e9e0fd"
 }

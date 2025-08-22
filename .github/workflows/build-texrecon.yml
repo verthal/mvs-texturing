@@ -1,0 +1,65 @@
+name: Build texrecon (Windows)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    tags: [ "v*" ]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    env:
+      VCPKG_DEFAULT_TRIPLET: x64-windows
+      VCPKG_FEATURE_FLAGS: dependencygraph
+      CMAKE_BUILD_TYPE: Release
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Setup MSVC Developer Command Prompt
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Setup CMake
+        uses: lukka/get-cmake@v3.30.0
+
+      - name: Setup vcpkg (manifest mode + cache)
+        id: vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: 04d9a0f3d1fdbf0a3b0a1fe1b6d9b3c2f1e0dabc # pinnen!
+          runVcpkgInstall: true
+
+      - name: Configure (CMake)
+        run: >
+          cmake -S . -B build
+          -G "Ninja"
+          -DCMAKE_BUILD_TYPE=%CMAKE_BUILD_TYPE%
+          -DCMAKE_TOOLCHAIN_FILE=${{ steps.vcpkg.outputs.vcpkgRoot }}/scripts/buildsystems/vcpkg.cmake
+
+      - name: Build (CMake)
+        run: cmake --build build --config %CMAKE_BUILD_TYPE% -j
+
+      - name: Collect runtime DLLs from vcpkg
+        shell: pwsh
+        run: |
+          $dest = "build\package\bin"
+          New-Item -Force -ItemType Directory -Path $dest | Out-Null
+          Copy-Item -Force "build\texrecon.exe" "build\package\"
+          $triplet = "${{ env.VCPKG_DEFAULT_TRIPLET }}"
+          $binDir  = "vcpkg_installed\$triplet\bin"
+          if (Test-Path $binDir) { Copy-Item -Force "$binDir\*.dll" $dest -ErrorAction SilentlyContinue }
+          # Optional: MSVC/C++ Runtime (normalerweise schon im System vorhanden)
+          Write-Host "Packaging finished."
+
+      - name: Archive artifact (zip)
+        uses: actions/upload-artifact@v4
+        with:
+          name: texrecon-windows-x64-${{ github.ref_name }}
+          path: |
+            build/package/texrecon.exe
+            build/package/bin/*.dll
